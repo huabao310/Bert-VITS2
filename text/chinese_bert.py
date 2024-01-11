@@ -2,7 +2,8 @@ import sys
 import torch
 from config import config
 from transformers import MegatronBertModel, BertTokenizer
-LOCAL_PATH = "./bert/Erlangshen-MegatronBert-1.3B-Chinese"
+#LOCAL_PATH = "./bert/Erlangshen-MegatronBert-1.3B-Chinese"
+LOCAL_PATH = "./bert/Erlangshen-MegatronBert-1.3B"
 tokenizer = BertTokenizer.from_pretrained(LOCAL_PATH)
 
 models = dict()
