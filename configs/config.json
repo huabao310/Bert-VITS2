@@ -41,6 +41,7 @@
     "n_speakers": 512,
     "cleaned_text": true,
     "spk2id": {
+	  "share": 280, 	
       "派蒙_ZH": 0,
       "纳西妲_ZH": 1,
       "凯亚_ZH": 2,
