@@ -22,7 +22,6 @@ import gradio as gr
 import webbrowser
 import numpy as np
 from config import config
-from tools.translate import translate
 import librosa
 
 net_g = None
@@ -70,6 +69,7 @@ def generate_audio(
                 style_weight=style_weight,
                 skip_start=skip_start,
                 skip_end=skip_end,
+
             )
             audio16bit = gr.processing_utils.convert_to_16_bit_wav(audio)
             audio_list.append(audio16bit)
@@ -432,7 +432,6 @@ if __name__ == "__main__":
                     另外，所有的语言选项都可以用'|'分割长段实现分句生成。
                     """,
                 )
-                trans = gr.Button("中翻日", variant="primary")
                 slicer = gr.Button("快速切分", variant="primary")
                 speaker = gr.Dropdown(
                     choices=speakers, value=speakers[0], label="Speaker"
@@ -475,7 +474,8 @@ if __name__ == "__main__":
                     gr.Markdown(
                         value="使用辅助文本的语意来辅助生成对话（语言保持与主文本相同）\n\n"
                         "**注意**：不要使用**指令式文本**（如：开心），要使用**带有强烈情感的文本**（如：我好快乐！！！）\n\n"
-                        "效果较不明确，留空即为不使用该功能"
+                        "效果较不明确，留空即为不使用该功能\n\n"
+                        "**如遇到主文本发音错误，可尝试替换主文本中发音错误的字为正确的谐音字，同时将原主文本填写于此，Weight拉满，以获得正确发音，同时保留原文本的Bert语义信息。**"
                     )
                     style_text = gr.Textbox(label="辅助文本")
                     style_weight = gr.Slider(
@@ -534,11 +534,6 @@ if __name__ == "__main__":
             outputs=[text_output, audio_output],
         )
 
-        trans.click(
-            translate,
-            inputs=[text],
-            outputs=[text],
-        )
         slicer.click(
             tts_split,
             inputs=[

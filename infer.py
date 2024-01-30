@@ -33,7 +33,7 @@ from oldVersion.V101.text import symbols as V101symbols
 from oldVersion import V111, V110, V101, V200, V210
 
 # 当前版本信息
-latest_version = "2.3"
+latest_version = "2.4"
 
 # 版本兼容
 SynthesizerTrnMap = {
@@ -104,7 +104,6 @@ def get_text(text, language_str, hps, device, style_text=None, style_weight=0.7)
     # 在此处实现当前版本的get_text
     norm_text, phone, tone, word2ph = clean_text(text, language_str)
     phone, tone, language = cleaned_text_to_sequence(phone, tone, language_str)
-
     if hps.data.add_blank:
         phone = commons.intersperse(phone, 0)
         tone = commons.intersperse(tone, 0)
@@ -112,9 +111,7 @@ def get_text(text, language_str, hps, device, style_text=None, style_weight=0.7)
         for i in range(len(word2ph)):
             word2ph[i] = word2ph[i] * 2
         word2ph[0] += 1
-    bert = get_bert(
-        norm_text, word2ph, language_str, device, style_text, style_weight
-    )
+    bert = get_bert(norm_text, word2ph, language_str, device, style_text, style_weight)
     del word2ph
 
     assert bert.shape[-1] == len(
@@ -144,6 +141,7 @@ def infer(
     skip_end=False,
     style_text=None,
     style_weight=0.7,
+    text_mode="Text",
 ):
     # 2.2版本参数位置变了
     # 2.1 参数新增 emotion reference_audio skip_start skip_end
@@ -216,12 +214,12 @@ def infer(
                 device,
             )
     # 在此处实现当前版本的推理
-    #emo = get_emo_(reference_audio, emotion, sid)
+    # emo = get_emo_(reference_audio, emotion, sid)
     language = "ZH"
     if isinstance(reference_audio, np.ndarray):
-         emo = get_clap_audio_feature(reference_audio, device)
+        emo = get_clap_audio_feature(reference_audio, device)
     else:
-         emo = get_clap_text_feature(emotion, device)
+        emo = get_clap_text_feature(emotion, device)
     emo = torch.squeeze(emo, dim=1)
 
     bert, phones, tones, lang_ids = get_text(
@@ -304,9 +302,9 @@ def infer_multilang(
 ):
     bert, ja_bert, en_bert, phones, tones, lang_ids = [], [], [], [], [], []
     if isinstance(reference_audio, np.ndarray):
-         emo = get_clap_audio_feature(reference_audio, device)
+        emo = get_clap_audio_feature(reference_audio, device)
     else:
-         emo = get_clap_text_feature(emotion, device)
+        emo = get_clap_text_feature(emotion, device)
     emo = torch.squeeze(emo, dim=1)
     for idx, (txt, lang) in enumerate(zip(text, language)):
         _skip_start = (idx != 0) or (skip_start and idx == 0)
@@ -316,12 +314,14 @@ def infer_multilang(
             temp_phones,
             temp_tones,
             temp_lang_ids,
-        ) = get_text(txt, 
-                     lang, 
-                     hps, 
-                     device,
-                    style_text=style_text,
-                    style_weight=style_weight,)
+        ) = get_text(
+            txt,
+            lang,
+            hps,
+            device,
+            style_text=style_text,
+            style_weight=style_weight,
+        )
         if _skip_start:
             temp_bert = temp_bert[:, 3:]
             temp_phones = temp_phones[3:]

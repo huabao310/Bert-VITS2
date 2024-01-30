@@ -13,7 +13,6 @@ import logging
 from config import config
 import argparse
 import datetime
-import gc
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 import commons
@@ -43,6 +42,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = (
     True  # If encontered training problem,please try to disable TF32.
 )
+torch.set_num_threads(1)
 torch.set_float32_matmul_precision("medium")
 torch.backends.cuda.sdp_kernel("flash")
 torch.backends.cuda.enable_flash_sdp(True)
@@ -143,7 +143,7 @@ def run():
         collate_fn=collate_fn,
         batch_sampler=train_sampler,
         persistent_workers=True,
-        prefetch_factor=4,
+        prefetch_factor=6,
     )  # DataLoader config could be adjusted.
     if rank == 0:
         eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps.data)
@@ -214,6 +214,10 @@ def run():
     if getattr(hps.train, "freeze_ZH_bert", False):
         print("Freezing ZH bert encoder !!!")
         for param in net_g.enc_p.bert_proj.parameters():
+            param.requires_grad = False
+    if getattr(hps.train, "freeze_emo", False):
+        print("Freezing emo vq !!!")
+        for param in net_g.enc_p.emo_vq.parameters():
             param.requires_grad = False
 
     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm).cuda(local_rank)
@@ -363,7 +367,6 @@ def run():
         wl = None
     scaler = GradScaler(enabled=hps.train.bf16_run)
 
-
     for epoch in range(epoch_str, hps.train.epochs + 1):
         if rank == 0:
             train_and_evaluate(
@@ -473,7 +476,7 @@ def train_and_evaluate(
                 x_mask,
                 z_mask,
                 (z, z_p, m_p, logs_p, m_q, logs_q),
-                (hidden_x, logw, logw_),#, logw_sdp),
+                (hidden_x, logw, logw_),  # , logw_sdp),
                 g,
                 loss_commit,
             ) = net_g(
@@ -539,14 +542,14 @@ def train_and_evaluate(
                 optim_dur_disc.zero_grad()
                 scaler.scale(loss_dur_disc_all).backward()
                 scaler.unscale_(optim_dur_disc)
-                #torch.nn.utils.clip_grad_norm_(
-                     #parameters=net_dur_disc.parameters(), max_norm=5
-                #)
+                # torch.nn.utils.clip_grad_norm_(
+                # parameters=net_dur_disc.parameters(), max_norm=5
+                # )
                 grad_norm_dur = commons.clip_grad_value_(
                     net_dur_disc.parameters(), None
                 )
                 scaler.step(optim_dur_disc)
-            if net_wd is not None:  
+            if net_wd is not None:
                 with autocast(enabled=hps.train.bf16_run, dtype=torch.bfloat16):
                     loss_slm = wl.discriminator(
                         y.detach().squeeze(), y_hat.detach().squeeze()
@@ -583,16 +586,10 @@ def train_and_evaluate(
                 loss_fm = feature_loss(fmap_r, fmap_g)
                 loss_gen, losses_gen = generator_loss(y_d_hat_g)
 
-                loss_gen_all = (
-                    loss_gen
-                    + loss_fm
-                    + loss_mel
-                    + loss_dur
-                    + loss_kl
-                )
+                loss_gen_all = loss_gen + loss_fm + loss_mel + loss_dur + loss_kl
                 if net_dur_disc is not None:
                     loss_dur_gen, losses_dur_gen = generator_loss(y_dur_hat_g)
-                    loss_gen_all += loss_dur_gen + loss_lm + loss_lm_gen
+                    loss_gen_all += loss_dur_gen + loss_lm + loss_lm_gen if net_wd is not None else loss_dur_gen
         optim_g.zero_grad()
         scaler.scale(loss_gen_all).backward()
         scaler.unscale_(optim_g)
@@ -663,11 +660,14 @@ def train_and_evaluate(
                     )
 
                 if net_wd is not None:
-                    scalar_dict.update({
-                        "loss/wd/total": loss_slm,
-                        "grad_norm_wd": grad_norm_wd,
-                        "loss/g/lm": loss_lm,
-                        "loss/g/lm_gen": loss_lm_gen,})
+                    scalar_dict.update(
+                        {
+                            "loss/wd/total": loss_slm,
+                            "grad_norm_wd": grad_norm_wd,
+                            "loss/g/lm": loss_lm,
+                            "loss/g/lm_gen": loss_lm_gen,
+                        }
+                    )
                 image_dict = {
                     "slice/mel_org": utils.plot_spectrogram_to_numpy(
                         y_mel[0].data.cpu().numpy()
